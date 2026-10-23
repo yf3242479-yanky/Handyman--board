@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Request a handyman</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#172b4d;--mu:#5e6c84;--bd:#c1c7d0}
+@media (prefers-color-scheme:dark){:root{--bg:#0c1b33;--card:#16253f;--tx:#e6edf7;--mu:#9fb0c9;--bd:#3a4a66}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,sans-serif}
+.w{max-width:520px;margin:0 auto;padding:20px 16px 40px}h1{font-size:24px;margin:0 0 4px}p{color:var(--mu);margin:0 0 16px}
+label{display:block;font-weight:600;margin:12px 0 4px}input,textarea{width:100%;padding:12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font:inherit}
+textarea{min-height:110px}button{margin-top:18px;width:100%;padding:14px;border:0;border-radius:8px;background:#0c66e4;color:#fff;font:700 17px inherit;font-family:inherit}
+button[disabled]{opacity:.6}.hp{position:absolute;left:-9999px}.ok{background:var(--card);padding:20px;border-radius:10px;text-align:center}
+.er{color:#c9372c;margin-top:10px}
+</style></head><body><div class="w">
+<div id="f"><h1>Fleishman Handyman</h1><p>Tell us what you need and we will get back to you.</p>
+<label for="n">Your name *</label><input id="n" autocomplete="name" maxlength="100">
+<label for="p">Phone number *</label><input id="p" type="tel" autocomplete="tel" maxlength="40">
+<label for="e">Email (optional)</label><input id="e" type="email" autocomplete="email" maxlength="100">
+<label for="a">Address of the job *</label><input id="a" autocomplete="street-address" maxlength="200">
+<label for="j">What do you need done? *</label><textarea id="j" maxlength="1500"></textarea>
+<label for="w">When would you like us? (optional)</label><input id="w" placeholder="For example: next week, mornings" maxlength="100">
+<input class="hp" id="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+<div class="er" id="er"></div><button id="go">Send request</button></div>
+<div id="d" class="ok" style="display:none"><h1>Thank you! ✅</h1><p>We got your request and will contact you soon.</p></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+var g=function(i){return document.getElementById(i)};
+firebase.initializeApp(window.FIREBASE_CONFIG);var db=firebase.firestore();
+g('go').onclick=function(){
+ var er=g('er');er.textContent='';
+ if(g('hp').value){g('f').style.display='none';g('d').style.display='block';return}
+ var n=g('n').value.trim(),p=g('p').value.trim(),a=g('a').value.trim(),j=g('j').value.trim();
+ if(!n||!p||!a||!j){er.textContent='Please fill in your name, phone, address and what you need.';return}
+ g('go').disabled=true;g('go').textContent='Sending…';
+ db.collection('requests').add({name:n,phone:p,addr:a,job:j,when:g('w').value.trim(),email:g('e').value.trim(),at:Date.now()})
+ .then(function(){g('f').style.display='none';g('d').style.display='block'})
+ .catch(function(){g('go').disabled=false;g('go').textContent='Send request';er.textContent='Could not send. Check your connection and try again, or call us.'});
+};
+</script></body></html>
