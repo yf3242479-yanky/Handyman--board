@@ -110,12 +110,16 @@ function ini(n){return String(n).split(' ').map(function(w){return w[0]||''}).jo
 function g(i){return document.getElementById(i)}
 function bind(s,f){[].forEach.call(document.querySelectorAll(s),function(e){e.onclick=function(ev){ev.stopPropagation();f(e)}})}
 function fmt(s){s=Math.floor(s);var h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return h+':'+('0'+m).slice(-2)+':'+('0'+r).slice(-2)}
-function el(j){return (j.secs||0)+(j.tStart?(Date.now()-j.tStart)/1000:0)}
-function stopT(j){j.secs=el(j);j.tStart=0}
+function cur(j){return (j.secs||0)+(j.tStart?(Date.now()-j.tStart)/1000:0)}
+function el(j){return (j.logged||0)+cur(j)}
+function stopT(j){j.secs=cur(j);j.tStart=0}
+function finishT(j){var s=Math.round(cur(j));j.tStart=0;j.secs=0;if(s>=1){j.log=j.log||[];j.log.push({t:Date.now(),secs:s,by:(ME&&ME.name)||'',wid:MYW||j.wid||''});j.logged=(j.logged||0)+s}}
+function hm(s){s=Math.round(s);var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+' hr '+m+' min':(m?m+' min':(s>0?'under 1 min':'0 min'))}
+function logHTML(j){var L=j.log||[];if(!L.length)return '';return '<div class="m" style="margin-top:8px"><b>Saved work time</b></div>'+L.slice().reverse().map(function(e){return '<div class="m">'+new Date(e.t).toLocaleDateString([], {month:'short',day:'numeric'})+' · '+hm(e.secs)+(e.by?' · '+esc(e.by):'')+'</div>'}).join('')+'<div class="m"><b>Total on this job: '+hm(el(j))+'</b></div>'}
 function labor(j){return Number(j.rate)>0?Math.round(el(j)/3600*Number(j.rate)*100)/100:(Number(j.price)||0)}
 function total(j){return labor(j)+(Number(j.mats)||0)}
 function amt(j){return j.status=='Paid'&&j.paidAmt!=null?j.paidAmt:total(j)}
-function touch(j){if(j.status=='Paid'&&!j.paidOn)j.paidOn=Date.now()}
+function touch(j){if((j.status=='Done'||j.status=='Paid')&&(j.tStart||j.secs))finishT(j);if(j.status=='Paid'&&!j.paidOn)j.paidOn=Date.now()}
 function when(j){return new Date(j.date).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
 function isToday(j){return j.date&&j.date.slice(0,10)==D(0,0).slice(0,10)}
 function wcol(w){return w?PAL[(w.col||0)%PAL.length]:'#8590a2'}
@@ -167,11 +171,11 @@ function render(){
  });
  g('board').innerHTML=h;
  var open=0,due=0,paid=0,hrs=0,td=0,mi=0,fo=0;
- J.forEach(function(j){var p=amt(j);hrs+=el(j)/3600;if((j.status=='Done'||j.status=='Paid')&&j.miles)mi+=Number(j.miles);if(j.status=='Paid'&&j.rem&&j.paidOn&&j.paidOn+Number(j.rem)*30.4*864e5<Date.now())fo++;if(j.status=='Paid')paid+=p;else{open++;if(j.status=='Done')due+=p;if(isToday(j))td++}});
- g('st').innerHTML='<span>Today: <b>'+td+'</b></span><span>Open jobs: <b>'+open+'</b></span><span>Done, unpaid: <b>'+money(due)+'</b></span><span>Paid: <b>'+money(paid)+'</b></span><span>Hours: <b>'+hrs.toFixed(1)+'</b></span><span>Follow-ups due: <b>'+fo+'</b></span><span id="mi">Miles: <b>'+mi+'</b> (~'+money(Math.round(mi*MR))+')</span>';
+ J.forEach(function(j){var p=amt(j);hrs+=el(j)/3600;if(j.status=='Paid'&&j.rem&&j.paidOn&&j.paidOn+Number(j.rem)*30.4*864e5<Date.now())fo++;if(j.status=='Paid')paid+=p;else{open++;if(j.status=='Done')due+=p;if(isToday(j))td++}});
+ g('st').innerHTML='<span>Today: <b>'+td+'</b></span><span>Open jobs: <b>'+open+'</b></span><span>Done, unpaid: <b>'+money(due)+'</b></span><span>Paid: <b>'+money(paid)+'</b></span><span>Hours: <b>'+hrs.toFixed(1)+'</b></span><span>Follow-ups due: <b>'+fo+'</b></span>';
  renderCust(q);renderWork(q);renderSched(q);
 }
-function custStats(c){var L=J.filter(function(j){return j.cid==c.id}),p=0,fo=false;L.forEach(function(j){if(j.status=='Paid'){p+=amt(j);if(j.rem&&j.paidOn&&j.paidOn+Number(j.rem)*30.4*864e5<Date.now())fo=true}});return{n:L.length,paid:p,fo:fo}}
+function custStats(c){var L=J.filter(function(j){return j.cid==c.id}),p=0,fo=false,sc=0;L.forEach(function(j){sc+=el(j);if(j.status=='Paid'){p+=amt(j);if(j.rem&&j.paidOn&&j.paidOn+Number(j.rem)*30.4*864e5<Date.now())fo=true}});return{n:L.length,paid:p,fo:fo,secs:sc}}
 function renderCust(q){
  var vq=VIEW=='cust'?q:'',L=CU.filter(function(c){return (c.name+c.phone+c.addr+(c.email||'')).toLowerCase().indexOf(vq)>-1}).sort(function(a,b){return a.name.localeCompare(b.name)});
  var h='<div class="pg"><div class="sum"><div><b style="font-size:20px">'+CU.length+'</b><br>customers</div><div><b style="font-size:20px">'+CU.filter(function(c){return custStats(c).n>1}).length+'</b><br>repeat customers</div></div>',last='';
@@ -209,17 +213,17 @@ function form(j,st,cid,pre){
  +'<label>Customer</label><select id="f_cu">'+cs+'</select>'
  +'<label>Customer name</label><input id="f_name" value="'+esc(j.name)+'"><div class="g2"><div><label>Phone</label><input id="f_phone" type="tel" value="'+esc(j.phone)+'"></div><div><label>Assigned to</label><select id="f_wid">'+ws+'</select></div></div>'
  +'<label>Address</label><input id="f_addr" value="'+esc(j.addr)+'"><label>Job</label><textarea id="f_job" rows="2">'+esc(j.job)+'</textarea>'
- +'<div class="g2"><div><label>Flat price ($)</label><input id="f_price" type="number" value="'+esc(j.price)+'"></div><div><label>Label</label><select id="f_color">'+co+'</select></div>'
+ +'<div class="g2"><div><label>Label</label><select id="f_color">'+co+'</select></div>'
  +'<div><label>List</label><select id="f_status">'+opts(S,j.status)+'</select></div><div><label>Due date</label><input id="f_date" type="datetime-local" value="'+esc(j.date)+'"></div></div>'
- +'<div class="g2"><div><label>Hourly rate ($/hr, optional)</label><input id="f_rate" type="number" value="'+esc(j.rate||'')+'"></div><div><label>Materials cost ($)</label><input id="f_mats" type="number" value="'+esc(j.mats||'')+'"></div></div><div class="m">With an hourly rate, the price is the timer hours x rate. Leave it empty to charge the flat price.</div>'
- +'<div class="g2"><div><label>Round-trip miles</label><input id="f_miles" type="number" value="'+esc(j.miles||'')+'"></div><div><label>Follow-up reminder (months after paid)</label><input id="f_rem" type="number" value="'+esc(j.rem||'')+'"></div></div>'
+ +'<div class="g2"><div><label>Hourly rate ($/hr, optional)</label><input id="f_rate" type="number" value="'+esc(j.rate||'')+'"></div><div><label>Materials cost ($)</label><input id="f_mats" type="number" value="'+esc(j.mats||'')+'"></div></div><div class="m">No estimates. The price comes from the timer hours x your hourly rate, plus materials. With no rate, you type the final price when you finish the job.</div>'
+ +'<label>Follow-up reminder (months after paid)</label><input id="f_rem" type="number" value="'+esc(j.rem||'')+'">'
  +'<label>Description / notes</label><textarea id="f_notes" rows="3">'+esc(j.notes)+'</textarea>'
  +'<div class="btns" style="margin-top:14px"><button class="p" id="sv">Save</button><button id="cl">Cancel</button>'+(n?'':'<button id="dl" style="color:#c9372c">Delete</button>')+'</div>';
  show();
  g('f_cu').onchange=function(){var c=cu(this.value);if(c){g('f_name').value=c.name;g('f_phone').value=c.phone;g('f_addr').value=c.addr}};
  g('cl').onclick=function(){n?close():detail(j.id)};
  g('sv').onclick=function(){
-  ['name','phone','addr','job','price','rate','mats','miles','rem','date','color','status','notes'].forEach(function(k){j[k]=g('f_'+k).value});
+  ['name','phone','addr','job','rate','mats','rem','date','color','status','notes'].forEach(function(k){j[k]=g('f_'+k).value});
   j.wid=g('f_wid').value?Number(g('f_wid').value):'';
   if(!j.name.trim()){alert('Please enter a name');return}
   var c=cu(g('f_cu').value)||CU.filter(function(x){return x.name.toLowerCase()==j.name.trim().toLowerCase()})[0];
@@ -236,14 +240,14 @@ function detail(id){
  g('box').innerHTML='<div style="font-size:20px;font-weight:700"><span id="cuL" style="cursor:pointer;text-decoration:underline">'+esc(j.name)+'</span></div><div style="color:var(--mu)">in list <b>'+j.status+'</b></div>'
  +'<div class="sec">'+(j.phone?'<a class="b" href="tel:'+esc(j.phone)+'" style="font-size:20px;padding:14px;background:#0c66e4;color:#fff;text-align:center">📞 '+esc(j.phone)+'</a>':'<div class="m">No phone number yet. Tap Edit card to add one.</div>')+'<div class="btns" style="margin-top:6px">'+(j.phone?'<a class="b" href="sms:'+esc(j.phone)+'">💬 Text</a>':'')+(j.addr?'<a class="b" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(j.addr)+'" target="_blank">📍 '+esc(j.addr)+'</a>':'')+'</div></div>'
  +'<div class="sec"><h4>Label</h4><span class="pill" style="background:'+c[0]+'">'+c[1]+'</span></div>'
- +'<div class="sec"><h4>Job</h4>'+esc(j.job)+'<div style="color:var(--mu);margin-top:4px">'+(Number(j.rate)>0?money(j.rate)+'/hr · ':'')+(Number(j.mats)?'Materials '+money(j.mats)+' · ':'')+'Total '+money(amt(j))+(j.date?' · Due '+when(j):'')+'</div></div>'
+ +'<div class="sec"><h4>Job</h4>'+esc(j.job)+'<div style="color:var(--mu);margin-top:4px">'+(Number(j.rate)>0?money(j.rate)+'/hr · ':'')+(Number(j.mats)?'Materials '+money(j.mats)+' · ':'')+(amt(j)>0?'Total '+money(amt(j))+' · ':'')+(j.date?'Due '+when(j):'')+'</div></div>'
  +(j.notes?'<div class="sec"><h4>Description</h4>'+esc(j.notes)+'</div>':'')
  
  +(ROLE=='owner'?'<div class="sec"><h4>Assigned to</h4><select id="wo">'+ws+'</select></div>':'')
  +'<div class="sec"><h4>Checklist</h4>'+ckl(j)+'</div>'
  +'<div class="sec"><h4>Photos</h4>'+phh(j)+'</div>'
- +'<div class="sec"><h4>Time tracking (optional)</h4><div class="tbox"><div id="bigt" data-id="'+j.id+'" style="font-size:38px;font-weight:700;font-variant-numeric:tabular-nums">'+fmt(el(j))+'</div>'
- +(paid?'':'<button class="p" id="tg" style="margin-top:8px;width:100%;padding:10px">'+(run?'⏸ Pause timer':(j.secs>0?'▶ Resume timer':'▶ Start timer'))+'</button>'+(!run&&j.secs>0?'<button id="rt" style="margin-top:6px;width:100%">Reset timer</button>':''))+'</div></div>'
+ +'<div class="sec"><h4>Time tracking (optional)</h4><div class="tbox"><div class="m">This session</div><div id="bigt" data-id="'+j.id+'" style="font-size:38px;font-weight:700;font-variant-numeric:tabular-nums">'+fmt(cur(j))+'</div>'
+ +(paid?'':'<button class="p" id="tg" style="margin-top:8px;width:100%;padding:10px">'+(run?'⏸ Pause timer':(j.secs>0?'▶ Resume timer':'▶ Start timer'))+'</button>'+(cur(j)>0?'<button id="fin" style="margin-top:6px;width:100%;padding:10px;background:#1f845a;color:#fff;font-weight:700">⏹ Stop and save time</button>':'')+(!run&&j.secs>0?'<button id="rt" style="margin-top:6px;width:100%">Discard this session</button>':''))+logHTML(j)+'</div></div>'
  +'<div class="sec"><h4>Payment</h4>'+(paid?'✅ Paid: '+esc(j.pay||'')+(j.phone?'<div class="btns" style="margin-top:8px"><a class="b" href="sms:'+esc(j.phone)+'?&body='+encodeURIComponent('Hi '+j.name.split(' ')[0]+', thank you! Receipt: '+j.job+' - '+money(amt(j))+' paid ('+(j.pay||'')+'). Time on site: '+fmt(el(j))+'.')+'">📩 Text receipt</a></div>':''):'<button class="p" id="pc" style="width:100%;padding:10px;margin-bottom:6px">💳 Pay by credit card</button><div class="btns">'+(j.status!='Done'?'<button id="dn">Mark job done</button>':'')+'<button id="cs">Paid cash/check</button></div>')+'</div>'
  +'<div class="sec"><h4>Move to list</h4><select id="mv">'+opts(S,j.status)+'</select></div>'
  +'<div class="btns sec">'+(ROLE=='owner'?'<button id="ed">Edit card</button>':'')+'<button id="cl">Close</button></div>';
@@ -259,14 +263,15 @@ function detail(id){
  [].forEach.call(document.querySelectorAll('[data-ph]'),function(e){e.onclick=function(){var p=j.photos[e.dataset.ph];g('box').innerHTML='<img src="'+p.d+'" style="width:100%;border-radius:8px"><button id="bkp" style="margin-top:10px;width:100%">Back</button>';g('bkp').onclick=function(){detail(id)}}});
  g('adck').onclick=function(){var v=g('newck').value.trim();if(!v)return;(j.todo=j.todo||[]).push({t:v,d:0});save();render();detail(id)};
  if(g('tg'))g('tg').onclick=function(){if(j.tStart)stopT(j);else{j.tStart=Date.now();if(['New Lead','Scheduled'].indexOf(j.status)>-1)j.status='In Progress'}save();render();detail(id)};
- if(g('rt'))g('rt').onclick=function(){if(confirm('Reset timer to 0?')){j.secs=0;save();render();detail(id)}};
- if(g('dn'))g('dn').onclick=function(){stopT(j);j.status='Done';save();render();detail(id)};
- if(g('cs'))g('cs').onclick=function(){stopT(j);j.paidOn=Date.now();j.paidAmt=total(j);j.status='Paid';j.pay='Cash/check';save();render();detail(id)};
+ if(g('fin'))g('fin').onclick=function(){finishT(j);save();render();detail(id)};
+ if(g('rt'))g('rt').onclick=function(){if(confirm('Discard this session time without saving it?')){j.secs=0;save();render();detail(id)}};
+ if(g('dn'))g('dn').onclick=function(){finishT(j);if(!(Number(j.rate)>0)){var v=prompt('Final price for this job ($). Leave empty to skip.',j.price||'');if(v!==null&&Number(v)>0)j.price=Number(v)}j.status='Done';save();render();detail(id)};
+ if(g('cs'))g('cs').onclick=function(){var a=total(j),v=prompt('Amount received ($)',a||'');if(v===null)return;a=Number(v);if(!(a>0)){alert('Please enter the amount');return}finishT(j);j.paidOn=Date.now();j.paidAmt=a;j.status='Paid';j.pay='Cash/check';save();render();detail(id)};
  if(g('pc'))g('pc').onclick=function(){payForm(j)};
 }
 function payForm(j){
  var B=g('box');
- B.innerHTML='<h3 style="margin:0">Pay by credit card</h3><div style="color:var(--mu)">'+esc(j.name)+' · '+fmt(el(j))+' on site</div>'
+ B.innerHTML='<h3 style="margin:0">Pay by credit card</h3><div style="color:var(--mu)">'+esc(j.name)+' · '+hm(el(j))+' on site</div>'
  +'<label>Amount ($)</label><input id="f_amt" type="number" value="'+amt(j)+'"><label>Name on card</label><input id="f_cn">'
  +'<label>Card number</label><input id="f_cd" inputmode="numeric" maxlength="19" placeholder="4242 4242 4242 4242" autocomplete="off"><div class="g2"><div><label>Expires (MM/YY)</label><input id="f_ex" placeholder="09/28" maxlength="5"></div><div><label>CVC</label><input id="f_cv" inputmode="numeric" maxlength="4"></div></div>'
  +'<p class="m">Preview only: no real money is charged and the card number is never saved. The real app connects to Stripe or Square for this.</p>'
@@ -275,7 +280,7 @@ function payForm(j){
  g('go').onclick=function(){
   var d=g('f_cd').value.replace(/\D/g,''),a=Number(g('f_amt').value);
   if(d.length<13||!/^\d\d\/\d\d$/.test(g('f_ex').value)||g('f_cv').value.length<3||!(a>0)){alert('Please check the amount, card number, expiry and CVC');return}
-  stopT(j);j.paidOn=Date.now();j.status='Paid';j.paidAmt=a;j.pay='Card •••• '+d.slice(-4);save();render();
+  finishT(j);j.paidOn=Date.now();j.status='Paid';j.paidAmt=a;j.pay='Card •••• '+d.slice(-4);save();render();
   B.innerHTML='<div style="text-align:center;padding:20px 0"><div style="font-size:48px">✅</div><h3>Payment received</h3><div>'+money(a)+' · Card •••• '+d.slice(-4)+'</div><button class="p" id="ok" style="margin-top:16px;width:100%">Done</button></div>';
   g('ok').onclick=close;
  };
@@ -292,12 +297,12 @@ function fups(){
 }
 function custDetail(id){
  var c=cu(id);if(!c)return;var L=J.filter(function(j){return j.cid==id}).sort(function(a,b){return String(b.date).localeCompare(String(a.date))}),s=custStats(c);
- var h='<div style="font-size:20px;font-weight:700">'+esc(c.name)+'</div><div class="m">'+s.n+' job'+(s.n==1?'':'s')+' · '+money(s.paid)+' paid</div>'
+ var h='<div style="font-size:20px;font-weight:700">'+esc(c.name)+'</div><div class="m">'+s.n+' job'+(s.n==1?'':'s')+' · '+money(s.paid)+' paid · '+hm(s.secs)+' worked in total</div>'
  +'<div class="btns sec">'+(c.phone?'<a class="b" href="tel:'+esc(c.phone)+'" style="flex:1 1 100%;font-size:18px;padding:12px;background:#0c66e4;color:#fff">📞 '+esc(c.phone)+'</a><a class="b" href="sms:'+esc(c.phone)+'">💬 Text</a>':'')+(c.email?'<a class="b" href="mailto:'+esc(c.email)+'">✉️ Email</a>':'')+(c.addr?'<a class="b" href="https://maps.google.com/?q='+encodeURIComponent(c.addr)+'" target="_blank">📍 '+esc(c.addr)+'</a>':'')+'</div>'
  +(c.notes?'<div class="sec"><h4>Notes</h4>'+esc(c.notes)+'</div>':'')
  +'<div class="sec"><h4>Job history</h4>';
  if(!L.length)h+='<div class="m">No jobs yet.</div>';
- L.forEach(function(j){var cl=C[j.color]||C.green;h+='<div class="r2" data-j="'+j.id+'" style="border-left:6px solid '+cl[0]+'"><div style="flex:1"><b>'+esc(j.job)+'</b><div class="m">'+j.status+(j.date?' · '+when(j):'')+'</div></div><b>'+money(amt(j))+'</b></div>'});
+ L.forEach(function(j){var cl=C[j.color]||C.green;h+='<div class="r2" data-j="'+j.id+'" style="border-left:6px solid '+cl[0]+'"><div style="flex:1"><b>'+esc(j.job)+'</b><div class="m">'+j.status+(j.date?' · '+when(j):'')+'</div><div class="m">⏱ '+(el(j)>0?hm(el(j))+' worked':'No time saved yet')+'</div></div><b>'+(amt(j)>0?money(amt(j)):'')+'</b></div>'});
  h+='</div><div class="btns sec"><button class="p" id="nj">+ New job</button><button id="ec">Edit customer</button><button id="cl">Close</button></div>';
  g('box').innerHTML=h;show();
  g('cl').onclick=close;g('nj').onclick=function(){form(null,'New Lead',id)};g('ec').onclick=function(){custForm(c)};
@@ -364,7 +369,7 @@ B.ondragover=function(e){var l=e.target.closest('.list');if(l&&dragId){e.prevent
 B.ondrop=function(e){var l=e.target.closest('.list');if(l&&dragId){e.preventDefault();var j=find(dragId);j.status=l.dataset.s;touch(j);save();dragId=null;render()}};
 setInterval(function(){
  [].forEach.call(document.querySelectorAll('.tm'),function(e){var j=find(e.dataset.id);if(j&&j.tStart)e.textContent='⏱ '+fmt(el(j))});
- var b=g('bigt');if(b){var j=find(b.dataset.id);if(j&&j.tStart)b.textContent=fmt(el(j))}
+ var b=g('bigt');if(b){var j=find(b.dataset.id);if(j&&j.tStart)b.textContent=fmt(cur(j))}
 },1000);
 function applyDrop(id,d){var j=find(id);if(!j)return;var p=d.indexOf(':'),f=d.slice(0,p),v=d.slice(p+1);if(f=='wid'){if(ROLE!='owner')return;j.wid=v?Number(v):''}else j[f]=v;touch(j);save();render()}
 function dropAt(x,y){var e=document.elementFromPoint(x,y);return e&&e.closest?e.closest('[data-drop]'):null}
